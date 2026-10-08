@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D World Globe Game for English Learners</title>
+    <!-- Tailwind CSS for modern responsive styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js for 3D graphics rendering -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Tone.js for interactive sound synthesis -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <!-- Google Font Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: 'Inter', sans-serif;
+            user-select: none;
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #030712;
+            color: white;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* Glassmorphism containers */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+        }
+
+        .glass-card {
+            background: rgba(30, 41, 59, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        /* Custom glow effects */
+        .glow-gold {
+            box-shadow: 0 0 25px rgba(250, 204, 21, 0.5);
+        }
+
+        .glow-btn {
+            box-shadow: 0 8px 25px rgba(34, 197, 94, 0.4), 0 4px 0 #15803d;
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .glow-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 30px rgba(34, 197, 94, 0.6), 0 6px 0 #15803d;
+        }
+
+        .glow-btn:active:not(:disabled) {
+            transform: translateY(4px);
+            box-shadow: 0 2px 10px rgba(34, 197, 94, 0.3), 0 0px 0 #15803d;
+        }
+
+        /* Animated flag popup modal */
+        #country-card {
+            transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transform: translateY(-20px) scale(0.9);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #country-card.active {
+            transform: translateY(0) scale(1);
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        /* Flag tray scrollbar styling */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        /* Pulse animation for active flag */
+        @keyframes flagPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.08); }
+        }
+
+        .pulse-flag {
+            animation: flagPulse 2s infinite ease-in-out;
+        }
+
+        /* Loading Spinner */
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 6px solid rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            border-top-color: #38bdf8;
+            animation: spin 1s cubic-bezier(0.55, 0.15, 0.45, 0.85) infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="relative flex flex-col justify-between min-h-screen">
+
+    <!-- Loading Screen -->
+    <div id="loading" class="fixed inset-0 z-50 bg-slate-950 flex flex-col justify-center items-center transition-opacity duration-700">
+        <div class="spinner mb-6"></div>
+        <h2 class="text-2xl font-bold tracking-wider text-blue-400 mb-2">Rendering 3D Earth Globe...</h2>
+        <p class="text-slate-400 text-sm">Generating Country Flags & Interactive Features</p>
+    </div>
+
+    <!-- 3D Canvas Layer -->
+    <div id="canvas-container"></div>
+
+    <!-- UI Overlay Layer -->
+    <div class="relative z-10 w-full h-full flex flex-col justify-between p-4 md:p-6 pointer-events-none min-h-screen">
+        
+        <!-- Header Section -->
+        <header class="flex justify-between items-start w-full max-w-6xl mx-auto">
+            <div class="glass-panel px-6 py-4 rounded-2xl border border-white/10 pointer-events-auto">
+                <h1 class="text-2xl md:text-4xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-teal-300 to-green-400">
+                    WORLD EXPLORER 3D
+                </h1>
+                <p class="text-xs md:text-sm font-semibold text-blue-200 mt-1 flex items-center gap-2">
+                    <span>🌍</span> Learn Countries & Flags in English!
+                </p>
+            </div>
+
+            <!-- Mute / Speech Controls -->
+            <div class="glass-panel p-2 rounded-xl flex gap-2 pointer-events-auto">
+                <button id="sound-toggle-btn" title="Toggle Sound Effects" class="p-3 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-200 transition">
+                    🔊
+                </button>
+            </div>
+        </header>
+
+        <!-- Selected Country Flag Card (Center Top Overlay) -->
+        <div class="w-full flex justify-center my-auto py-4">
+            <div id="country-card" class="glass-card p-6 rounded-3xl max-w-md w-full text-center flex flex-col items-center gap-4 glow-gold shadow-2xl">
+                
+                <!-- Country Flag Display Box -->
+                <div class="relative w-36 h-24 rounded-xl overflow-hidden shadow-lg border-2 border-white/30 pulse-flag">
+                    <img id="card-flag-img" src="" alt="Flag" class="w-full h-full object-cover">
+                </div>
+
+                <!-- Country Name & Pronunciation -->
+                <div class="w-full">
+                    <div class="flex items-center justify-center gap-2">
+                        <h2 id="card-country-name" class="text-3xl md:text-4xl font-extrabold text-amber-300 tracking-wide">
+                            Taiwan
+                        </h2>
+                        <button id="speak-btn" title="Pronounce Name" class="p-2 rounded-full bg-blue-600/80 hover:bg-blue-500 text-white transition active:scale-95 shadow">
+                            🗣️
+                        </button>
+                    </div>
+                    <p id="card-phonetic" class="text-sm font-medium text-slate-300 mt-1 italic">/ˈtaɪ.wɑːn/</p>
+                </div>
+
+                <!-- Flag Color Swatches -->
+                <div class="flex items-center gap-2 py-1">
+                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Flag Colors:</span>
+                    <div id="card-color-swatches" class="flex gap-1.5"></div>
+                </div>
+
+                <!-- Fun Fact / Greeting -->
+                <div class="bg-slate-900/60 p-3 rounded-xl w-full text-xs md:text-sm text-blue-200 border border-white/5">
+                    <span class="font-bold text-amber-400">Fun Fact:</span> <span id="card-fact">Known for beautiful mountains, night markets, and friendly people!</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Controls & Country Quick-Select Bar -->
+        <footer class="w-full max-w-5xl mx-auto flex flex-col items-center gap-4 pb-2 pointer-events-auto">
+            
+            <!-- Main SPIN Button -->
+            <button id="spin-btn" class="glow-btn bg-gradient-to-r from-emerald-500 via-green-500 to-teal-600 text-white text-lg md:text-2xl font-black px-10 py-4 rounded-full uppercase tracking-wider cursor-pointer border border-green-300/40">
+                🎲 SPIN THE GLOBE
+            </button>
+
+            <!-- Interactive Country Flag Picker Tray -->
+            <div class="glass-panel w-full p-3 rounded-2xl border border-white/10 flex flex-col items-center gap-2">
+                <p class="text-xs font-bold text-slate-300 uppercase tracking-widest">
+                    Select any country flag to explore:
+                </p>
+                
+                <div id="flag-tray" class="flex w-full overflow-x-auto gap-3 py-1 px-2 no-scrollbar justify-start md:justify-center">
+                    <!-- Flag Pills injected by JS -->
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        // Comprehensive Target Country Data with Canvas Flag Generators & Visual Colors
+        const countriesData = [
+            {
+                name: "Taiwan",
+                phonetic: "/ˈtaɪ.wɑːn/",
+                lat: 23.6978,
+                lng: 120.9605,
+                colors: ["#FE0000", "#000095", "#FFFFFF"],
+                fact: "Known for delicious street food, high-tech cities, and scenic mountains!",
+                drawFlag: (ctx, w, h) => {
+                    ctx.fillStyle = "#FE0000";
+                    ctx.fillRect(0, 0, w, h);
+                    ctx.fillStyle = "#000095";
+                    ctx.fillRect(0, 0, w * 0.5, h * 0.5);
+                    // 12-ray white sun
+                    drawSunRays(ctx, w * 0.25, h * 0.25, h * 0.18, 12, "#FFFFFF");
+                    ctx.fillStyle = "#FFFFFF";
+                    ctx.beginPath();
+                    ctx.arc(w * 0.25, h * 0.25, h * 0.1, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            },
+            {
+                name: "Japan",
+                phonetic: "/dʒəˈpæn/",
+                lat: 36.2048,
+                lng: 138.2529,
+                colors: ["#FFFFFF", "#BC002D"],
+                fact: "Famous for Mt. Fuji, cherry blossoms, bullet trains, and anime!",
+                drawFlag: (ctx, w, h) => {
+                    ctx.fillStyle = "#FFFFFF";
+                    ctx.fillRect(0, 0, w, h);
+                    ctx.fillStyle = "#BC002D";
+                    ctx.beginPath();
+                    ctx.arc(w * 0.5, h * 0.5, h * 0.3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            },
+            {
+                name: "Australia",
+                phonetic: "/ɒˈstreɪ.li.ə/",
+                lat: -25.2744,
+                lng: 133.7751,
+                colors: ["#00008B", "#FFFFFF", "#FF0000"],
+                fact: "Home to kangaroos, koalas, the Great Barrier Reef, and Sydney Harbor!",
+                drawFlag: (ctx, w, h) => {
+                    ctx.fillStyle = "#00008B";
+                    ctx.fillRect(0, 0, w, h);
+                    drawUnionJack(ctx, 0, 0, w * 0.5, h * 0.5);
+                    // Commonwealth Star
+                    drawStar(ctx, w * 0.25, h * 0.75, 7, h * 0.12, h * 0.05, "#FFFFFF");
+                    // Southern Cross Stars
+                    drawStar(ctx, w * 0.75, h * 0.2, 7, h * 0.06, h * 0.025, "#FFFFFF");
+                    drawStar(ctx, w * 0.88, h * 0.4, 7, h * 0.06, h * 0.025, "#FFFFFF");
+                    drawStar(ctx, w * 0.75, h * 0.8, 7, h * 0.06, h * 0.025, "#FFFFFF");
+                    drawStar(ctx, w * 0.62, h * 0.5, 7, h * 0.06, h * 0.025, "#FFFFFF");
+                    drawStar(ctx, w * 0.82, h * 0.62, 5, h * 0.04, h * 0.018, "#FFFFFF");
+                }
+            },
+            {
+                name: "India",
+                phonetic: "/ˈɪn.di.ə/",
+                lat: 20.5937,
+                lng: 78.9629,
+                colors: ["#FF9933", "#FFFFFF", "#138808", "#000080"],
+                fact: "Famous for the Taj Mahal, vibrant spices, yoga, and rich heritage!",
+                drawFlag: (ctx, w, h) => {
+                    ctx.fillStyle = "#FF9933";
+                    ctx.fillRect(0, 0, w, h / 3);
+                    ctx.fillStyle = "#FFFFFF";
+                    ctx.fillRect(0, h / 3, w, h / 3);
+                    ctx.fillStyle = "#138808";
+                    ctx.fillRect(0, (h / 3) * 2, w, h / 3);
+                    // Ashoka Chakra wheel
+                    drawChakra(ctx, w * 0.5, h * 0.5, h * 0.14);
+                }
+            },
+            {
+                name: "the UK",
+                phonetic: "/ðə ˌjuːˈkaɪ.tɪd ˈkɪŋ.dəm/",
+                lat: 55.3781,
+                lng: -3.4360,
+                colors: ["#012169", "#C8102E", "#FFFFFF"],
+                fact: "Home to Big Ben, historic castles, double-decker buses, and tea culture!",
+                drawFlag: (ctx, w, h) => {
+                    drawUnionJack(ctx, 0, 0, w, h);
+                }
+            },
+            {
+                name: "the USA",
+                phonetic: "/ðə ˌjuː.naɪ.tɪd ˈsteɪts/",
+                lat: 37.0902,
+                lng: -95.7129,
+                colors: ["#B22234", "#FFFFFF", "#3C3B6E"],
+                fact: "Home to the Statue of Liberty, Grand Canyon, and Hollywood!",
+                drawFlag: (ctx, w, h) => {
+                    const stripeH = h / 13;
+                    for (let i = 0; i < 13; i++) {
+                        ctx.fillStyle = (i % 2 === 0) ? "#B22234" : "#FFFFFF";
+                        ctx.fillRect(0, i * stripeH, w, stripeH);
+                    }
+                    // Blue canton
+                    ctx.fillStyle = "#3C3B6E";
+                    ctx.fillRect(0, 0, w * 0.4, stripeH * 7);
+                    // Star dots grid
+                    ctx.fillStyle = "#FFFFFF";
+                    for (let r = 1; r <= 5; r++) {
+                        for (let c = 1; c <= 6; c++) {
+                            ctx.beginPath();
+                            ctx.arc((w * 0.4) * (c / 7), (stripeH * 7) * (r / 6), stripeH * 0.25, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                    }
+                }
+            },
+            {
+                name: "Singapore",
+                phonetic: "/ˌsɪŋ.əˈpɔːr/",
+                lat: 1.3521,
+                lng: 103.8198,
+                colors: ["#ED2939", "#FFFFFF"],
+                fact: "Known for the Marina Bay Sands, supertree gardens, and lush greenery!",
+                drawFlag: (ctx, w, h) => {
+                    ctx.fillStyle = "#ED2939";
+                    ctx.fillRect(0, 0, w, h * 0.5);
+                    ctx.fillStyle = "#FFFFFF";
+                    ctx.fillRect(0, h * 0.5, w, h * 0.5);
+                    // White Crescent
+                    ctx.fillStyle = "#FFFFFF";
+                    ctx.beginPath();
+                    ctx.arc(w * 0.2, h * 0.25, h * 0.16, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = "#ED2939";
+                    ctx.beginPath();
+                    ctx.arc(w * 0.24, h * 0.25, h * 0.15, 0, Math.PI * 2);
+                    ctx.fill();
+                    // 5 white stars
+                    for (let i = 0; i < 5; i++) {
+                        const angle = (i * 72 - 90) * Math.PI / 180;
+                        const sx = w * 0.28 + Math.cos(angle) * (h * 0.08);
+                        const sy = h * 0.25 + Math.sin(angle) * (h * 0.08);
+                        drawStar(ctx, sx, sy, 5, h * 0.03, h * 0.012, "#FFFFFF");
+                    }
+                }
+            },
+            {
+                name: "South Korea",
+                phonetic: "/saʊθ kəˈriː.ə/",
+                lat: 35.9078,
+                lng: 127.7669,
+                colors: ["#FFFFFF", "#CD2E3A", "#0047A0", "#000000"],
+                fact: "Famous for K-pop, modern technology, delicious BBQ, and vibrant palaces!",
+                drawFlag: (ctx, w, h) => {
+                    ctx.fillStyle = "#FFFFFF";
+                    ctx.fillRect(0, 0, w, h);
+                    // Taegeuk symbol
+                    const cx = w * 0.5, cy = h * 0.5, r = h * 0.25;
+                    ctx.fillStyle = "#CD2E3A";
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r, Math.PI * 0.75, Math.PI * 1.75, false);
+                    ctx.arc(cx - r/2 * Math.cos(Math.PI/4), cy - r/2 * Math.sin(Math.PI/4), r/2, Math.PI * 1.75, Math.PI * 0.75, false);
+                    ctx.arc(cx + r/2 * Math.cos(Math.PI/4), cy + r/2 * Math.sin(Math.PI/4), r/2, Math.PI * 0.75, Math.PI * 1.75, true);
+                    ctx.fill();
+
+                    ctx.fillStyle = "#0047A0";
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r, Math.PI * 1.75, Math.PI * 0.75, false);
+                    ctx.arc(cx + r/2 * Math.cos(Math.PI/4), cy + r/2 * Math.sin(Math.PI/4), r/2, Math.PI * 0.75, Math.PI * 1.75, false);
+                    ctx.arc(cx - r/2 * Math.cos(Math.PI/4), cy - r/2 * Math.sin(Math.PI/4), r/2, Math.PI * 1.75, Math.PI * 0.75, true);
+                    ctx.fill();
+                }
+            },
+            {
+                name: "the Philippines",
+                phonetic: "/ðə ˈfɪl.ɪ.piːnz/",
+                lat: 12.8797,
+                lng: 121.7740,
+                colors: ["#0038A8", "#CE1126", "#FFFFFF", "#FCD116"],
+                fact: "Famous for over 7,000 tropical islands, clear beaches, and warm hospitality!",
+                drawFlag: (ctx, w, h) => {
+                    ctx.fillStyle = "#0038A8";
+                    ctx.fillRect(0, 0, w, h * 0.5);
+                    ctx.fillStyle = "#CE1126";
+                    ctx.fillRect(0, h * 0.5, w, h * 0.5);
+                    // White Triangle
+                    ctx.fillStyle = "#FFFFFF";
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    ctx.lineTo(0, h);
+                    ctx.lineTo(w * 0.45, h * 0.5);
+                    ctx.closePath();
+                    ctx.fill();
+                    // Yellow Sun
+                    drawStar(ctx, w * 0.15, h * 0.5, 8, h * 0.12, h * 0.05, "#FCD116");
+                }
+            }
+        ];
+
+        function createFlagDataURL(country) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 300;
+            canvas.height = 180;
+            const ctx = canvas.getContext('2d');
+            country.drawFlag(ctx, canvas.width, canvas.height);
+            return canvas.toDataURL();
+        }
+
+        function drawStar(ctx, cx, cy, spikes, outerRadius, innerRadius, color) {
+            let rot = Math.PI / 2 * 3;
+            let x = cx;
+            let y = cy;
+            let step = Math.PI / spikes;
+
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy - outerRadius);
+            for (let i = 0; i < spikes; i++) {
+                x = cx + Math.cos(rot) * outerRadius;
+                y = cy + Math.sin(rot) * outerRadius;
+                ctx.lineTo(x, y);
+                rot += step;
+
+                x = cx + Math.cos(rot) * innerRadius;
+                y = cy + Math.sin(rot) * innerRadius;
+                ctx.lineTo(x, y);
+                rot += step;
+            }
+            ctx.lineTo(cx, cy - outerRadius);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        function drawSunRays(ctx, cx, cy, radius, rays, color) {
+            ctx.fillStyle = color;
+            for (let i = 0; i < rays; i++) {
+                const angle = (i * (360 / rays)) * Math.PI / 180;
+                ctx.beginPath();
+                ctx.moveTo(cx, cy);
+                ctx.arc(cx, cy, radius, angle - 0.12, angle + 0.12);
+                ctx.closePath();
+                ctx.fill();
+            }
+        }
+
+        function drawChakra(ctx, cx, cy, r) {
+            ctx.strokeStyle = "#000080";
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.stroke();
+            for (let i = 0; i < 24; i++) {
+                const angle = (i * 15) * Math.PI / 180;
+                ctx.beginPath();
+                ctx.moveTo(cx, cy);
+                ctx.lineTo(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r);
+                ctx.stroke();
+            }
+        }
+
+        function drawUnionJack(ctx, x, y, w, h) {
+            // Blue Base
+            ctx.fillStyle = "#012169";
+            ctx.fillRect(x, y, w, h);
+            
+            // White Diagonals
+            ctx.strokeStyle = "#FFFFFF";
+            ctx.lineWidth = h * 0.2;
+            ctx.beginPath();
+            ctx.moveTo(x, y); ctx.lineTo(x + w, y + h);
+            ctx.moveTo(x + w, y); ctx.lineTo(x, y + h);
+            ctx.stroke();
+
+            // Red Diagonals
+            ctx.strokeStyle = "#C8102E";
+            ctx.lineWidth = h * 0.08;
+            ctx.beginPath();
+            ctx.moveTo(x, y); ctx.lineTo(x + w, y + h);
+            ctx.moveTo(x + w, y); ctx.lineTo(x, y + h);
+            ctx.stroke();
+
+            // White Cross
+            ctx.fillStyle = "#FFFFFF";
+            ctx.fillRect(x + w * 0.38, y, w * 0.24, h);
+            ctx.fillRect(x, y + h * 0.35, w, h * 0.3);
+
+            // Red Cross
+            ctx.fillStyle = "#C8102E";
+            ctx.fillRect(x + w * 0.43, y, w * 0.14, h);
+            ctx.fillRect(x, y + h * 0.4, w, h * 0.2);
+        }
+
+        let scene, camera, renderer, globe, particleSystem;
+        let countryPins = [];
+        let isSpinning = false;
+        let isSoundEnabled = true;
+        let targetRotation = { x: 0, y: 0 };
+        let currentRotation = { x: 0, y: 0 };
+        let selectedCountryIndex = -1;
+        let autoSpinSpeed = 0.0015;
+
+        // Interaction state
+        let isDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+
+        // Audio synths
+        let spinSynth, winSynth, clickSynth;
+
+        // Pre-generate Flag Data URLs
+        countriesData.forEach(c => {
+            c.flagDataUrl = createFlagDataURL(c);
+        });
+
+        async function initAudio() {
+            if (spinSynth) return;
+            await Tone.start();
+
+            spinSynth = new Tone.MembraneSynth({
+                pitchDecay: 0.01,
+                octaves: 2,
+                oscillator: { type: 'sine' },
+                envelope: { attack: 0.001, decay: 0.1, sustain: 0.01, release: 0.1 }
+            }).toDestination();
+            spinSynth.volume.value = -12;
+
+            winSynth = new Tone.PolySynth(Tone.Synth).toDestination();
+            winSynth.volume.value = -8;
+
+            clickSynth = new Tone.Synth({
+                oscillator: { type: 'triangle' },
+                envelope: { attack: 0.005, decay: 0.05, sustain: 0, release: 0.05 }
+            }).toDestination();
+            clickSynth.volume.value = -15;
+        }
+
+        function playSpinTick() {
+            if (!isSoundEnabled || !spinSynth) return;
+            spinSynth.triggerAttackRelease("C2", "16n");
+        }
+
+        function playWinFanfare() {
+            if (!isSoundEnabled || !winSynth) return;
+            const now = Tone.now();
+            winSynth.triggerAttackRelease(["C4", "E4", "G4", "C5"], "8n", now);
+            winSynth.triggerAttackRelease(["E5", "G5", "C6"], "4n", now + 0.15);
+        }
+
+        function playClickSound() {
+            if (!isSoundEnabled || !clickSynth) return;
+            clickSynth.triggerAttackRelease("G5", "32n");
+        }
+
+        function speakCountryName(text) {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'en-US';
+                utterance.rate = 0.85;
+                utterance.pitch = 1.05;
+                
+                const voices = window.speechSynthesis.getVoices();
+                const englishVoice = voices.find(v => v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Samantha') || v.name.includes('Google US')));
+                if (englishVoice) utterance.voice = englishVoice;
+                
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        function initThreeScene() {
+            const container = document.getElementById('canvas-container');
+
+            scene = new THREE.Scene();
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 16;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            container.appendChild(renderer.domElement);
+
+            // Lighting setup
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+
+            const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            sunLight.position.set(20, 20, 15);
+            scene.add(sunLight);
+
+            const backLight = new THREE.DirectionalLight(0x38bdf8, 0.5);
+            backLight.position.set(-20, -10, -15);
+            scene.add(backLight);
+
+            // Earth Globe Group
+            globe = new THREE.Group();
+            scene.add(globe);
+
+            // Earth Ocean Sphere
+            const sphereGeo = new THREE.SphereGeometry(5, 64, 64);
+            const oceanMat = new THREE.MeshPhongMaterial({
+                color: 0x0f2b48,
+                emissive: 0x040e1a,
+                specular: 0x224466,
+                shininess: 25
+            });
+            const oceanMesh = new THREE.Mesh(sphereGeo, oceanMat);
+            globe.add(oceanMesh);
+
+            // Procedural Landmass Blobs
+            const landMat = new THREE.MeshPhongMaterial({
+                color: 0x1e824c,
+                emissive: 0x0a381e,
+                emissiveIntensity: 0.3,
+                shininess: 10
+            });
+
+            for (let i = 0; i < 60; i++) {
+                const size = Math.random() * 1.6 + 0.4;
+                const landGeo = new THREE.SphereGeometry(size, 16, 16);
+                
+                const phi = Math.acos(-1 + (2 * i) / 60);
+                const theta = Math.sqrt(60 * Math.PI) * phi;
+                
+                const r = 4.88;
+                const x = r * Math.cos(theta) * Math.sin(phi);
+                const y = r * Math.sin(theta) * Math.sin(phi);
+                const z = r * Math.cos(phi);
+
+                const landMesh = new THREE.Mesh(landGeo, landMat);
+                landMesh.position.set(x, y, z);
+                landMesh.scale.z = 0.15;
+                landMesh.lookAt(0, 0, 0);
+                globe.add(landMesh);
+            }
+
+            // Atmosphere Glow Outer Shell
+            const atmosphereGeo = new THREE.SphereGeometry(5.25, 64, 64);
+            const atmosphereMat = new THREE.MeshPhongMaterial({
+                color: 0x38bdf8,
+                transparent: true,
+                opacity: 0.15,
+                side: THREE.BackSide
+            });
+            const atmosphere = new THREE.Mesh(atmosphereGeo, atmosphereMat);
+            scene.add(atmosphere);
+
+            // Create Starfield Background
+            createStarfield();
+
+            // Create 3D Country Flag Pins
+            createCountryPins();
+
+            // Create Confetti Burst Particle System
+            createParticleSystem();
+
+            // Populate UI Tray
+            renderFlagTray();
+
+            // Setup interaction handlers
+            setupEventListeners();
+
+            // Hide Loading Screen
+            setTimeout(() => {
+                const loader = document.getElementById('loading');
+                loader.style.opacity = '0';
+                setTimeout(() => loader.style.display = 'none', 700);
+            }, 800);
+
+            animate();
+        }
+
+        function createCountryPins() {
+            countriesData.forEach((country, index) => {
+                const pinGroup = new THREE.Group();
+
+                // Convert Lat/Lng to 3D Cartesian coordinates
+                const radius = 5.05;
+                const phi = (90 - country.lat) * (Math.PI / 180);
+                const theta = (country.lng + 180) * (Math.PI / 180);
+
+                const x = -(radius * Math.sin(phi) * Math.cos(theta));
+                const y = radius * Math.cos(phi);
+                const z = radius * Math.sin(phi) * Math.sin(theta);
+
+                pinGroup.position.set(x, y, z);
+
+                // Base Ring on surface
+                const ringGeo = new THREE.RingGeometry(0.2, 0.3, 32);
+                const ringMat = new THREE.MeshBasicMaterial({
+                    color: new THREE.Color(country.colors[0]),
+                    side: THREE.DoubleSide,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+                ringMesh.lookAt(0, 0, 0);
+                pinGroup.add(ringMesh);
+
+                // Metallic Gold Flagpole
+                const poleGeo = new THREE.CylinderGeometry(0.04, 0.04, 1.2, 16);
+                const poleMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.8, roughness: 0.2 });
+                const poleMesh = new THREE.Mesh(poleGeo, poleMat);
+                poleMesh.position.set(0, 0.6, 0);
+                pinGroup.add(poleMesh);
+
+                // Flag Texture Canvas
+                const canvas = document.createElement('canvas');
+                canvas.width = 256;
+                canvas.height = 160;
+                const ctx = canvas.getContext('2d');
+                country.drawFlag(ctx, 256, 160);
+
+                const flagTexture = new THREE.CanvasTexture(canvas);
+                flagTexture.needsUpdate = true;
+
+                // 3D Flag Banner Mesh
+                const flagGeo = new THREE.PlaneGeometry(0.9, 0.6);
+                const flagMat = new THREE.MeshStandardMaterial({
+                    map: flagTexture,
+                    side: THREE.DoubleSide,
+                    roughness: 0.4
+                });
+                const flagMesh = new THREE.Mesh(flagGeo, flagMat);
+                flagMesh.position.set(0.45, 0.9, 0);
+                pinGroup.add(flagMesh);
+
+                // Glowing Light Column Beam (Activated on selection)
+                const beamGeo = new THREE.CylinderGeometry(0.25, 0.05, 3, 16, 1, true);
+                const beamMat = new THREE.MeshBasicMaterial({
+                    color: new THREE.Color(country.colors[0]),
+                    transparent: true,
+                    opacity: 0,
+                    side: THREE.DoubleSide
+                });
+                const beamMesh = new THREE.Mesh(beamGeo, beamMat);
+                beamMesh.position.set(0, 1.5, 0);
+                pinGroup.add(beamMesh);
+
+                // Orient pin outward from sphere center
+                const upVector = new THREE.Vector3(x, y, z).normalize();
+                pinGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), upVector);
+
+                pinGroup.userData = {
+                    index: index,
+                    country: country,
+                    ring: ringMesh,
+                    flag: flagMesh,
+                    beam: beamMesh,
+                    originalPos: pinGroup.position.clone()
+                };
+
+                globe.add(pinGroup);
+                countryPins.push(pinGroup);
+            });
+        }
+
+        function createStarfield() {
+            const starsGeo = new THREE.BufferGeometry();
+            const count = 2500;
+            const positions = new Float32Array(count * 3);
+
+            for (let i = 0; i < count * 3; i += 3) {
+                positions[i] = THREE.MathUtils.randFloatSpread(300);
+                positions[i + 1] = THREE.MathUtils.randFloatSpread(300);
+                positions[i + 2] = THREE.MathUtils.randFloatSpread(300);
+            }
+
+            starsGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            const starsMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.12, transparent: true, opacity: 0.7 });
+            const starField = new THREE.Points(starsGeo, starsMat);
+            scene.add(starField);
+        }
+
+        function createParticleSystem() {
+            const particleCount = 120;
+            const geo = new THREE.BufferGeometry();
+            const pos = new Float32Array(particleCount * 3);
+            const velocities = [];
+
+            for (let i = 0; i < particleCount; i++) {
+                pos[i * 3] = 0;
+                pos[i * 3 + 1] = 0;
+                pos[i * 3 + 2] = 0;
+                velocities.push(new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.2,
+                    (Math.random() - 0.5) * 0.2,
+                    (Math.random() - 0.5) * 0.2
+                ));
+            }
+
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            const mat = new THREE.PointsMaterial({
+                size: 0.2,
+                transparent: true,
+                opacity: 0
+            });
+
+            particleSystem = new THREE.Points(geo, mat);
+            particleSystem.userData = { velocities: velocities, active: false };
+            scene.add(particleSystem);
+        }
+
+        function triggerConfettiBurst(targetVector, colorHex) {
+            particleSystem.material.color.setHex(colorHex);
+            particleSystem.material.opacity = 1;
+            particleSystem.position.copy(targetVector);
+
+            const positions = particleSystem.geometry.attributes.position.array;
+            const velocities = particleSystem.userData.velocities;
+
+            for (let i = 0; i < velocities.length; i++) {
+                positions[i * 3] = 0;
+                positions[i * 3 + 1] = 0;
+                positions[i * 3 + 2] = 0;
+                velocities[i].set(
+                    (Math.random() - 0.5) * 0.25,
+                    (Math.random() - 0.5) * 0.25,
+                    (Math.random() - 0.5) * 0.25
+                );
+            }
+            particleSystem.geometry.attributes.position.needsUpdate = true;
+            particleSystem.userData.active = true;
+            particleSystem.userData.life = 1.0;
+        }
+
+        function renderFlagTray() {
+            const tray = document.getElementById('flag-tray');
+            tray.innerHTML = '';
+
+            countriesData.forEach((c, idx) => {
+                const btn = document.createElement('button');
+                btn.className = `flag-pill flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800/80 hover:bg-slate-700 border border-white/10 transition active:scale-95 whitespace-nowrap`;
+                btn.onclick = () => selectCountryByIndex(idx);
+
+                btn.innerHTML = `
+                    <img src="${c.flagDataUrl}" class="w-6 h-4 object-cover rounded shadow" alt="${c.name}">
+                    <span class="text-xs font-bold text-slate-200">${c.name}</span>
+                `;
+                tray.appendChild(btn);
+            });
+        }
+
+        function selectCountryByIndex(idx) {
+            if (isSpinning) return;
+            initAudio();
+            playClickSound();
+
+            const country = countriesData[idx];
+            selectedCountryIndex = idx;
+
+            // Calculate rotation required to center target country in view
+            const targetRotX = (country.lat) * (Math.PI / 180);
+            const targetRotY = -(country.lng + 90) * (Math.PI / 180);
+
+            targetRotation.x = targetRotX;
+            targetRotation.y = targetRotY;
+
+            highlightCountryPin(idx);
+            showCountryCard(country);
+            playWinFanfare();
+            speakCountryName(country.name);
+        }
+
+        function spinGlobe() {
+            if (isSpinning) return;
+            initAudio();
+
+            isSpinning = true;
+            const spinBtn = document.getElementById('spin-btn');
+            spinBtn.disabled = true;
+            spinBtn.innerText = "🌀 SPINNING...";
+
+            // Hide current card
+            document.getElementById('country-card').classList.remove('active');
+            resetAllPins();
+
+            // Select random target country
+            const nextIdx = Math.floor(Math.random() * countriesData.length);
+            const country = countriesData[nextIdx];
+
+            const targetRotX = (country.lat) * (Math.PI / 180);
+            const targetRotY = -(country.lng + 90) * (Math.PI / 180);
+
+            // Add full multi-turns for spin effect
+            const spinTurnsY = Math.PI * 8 + (Math.random() * Math.PI * 2);
+            const spinTurnsX = (Math.random() - 0.5) * Math.PI * 2;
+
+            const startTime = Date.now();
+            const duration = 3500;
+            const startRotX = globe.rotation.x;
+            const startRotY = globe.rotation.y;
+
+            let lastTick = 0;
+
+            function animateSpin() {
+                const now = Date.now();
+                const progress = Math.min((now - startTime) / duration, 1);
+                
+                // Ease out cubic function
+                const easeOut = 1 - Math.pow(1 - progress, 3);
+
+                targetRotation.x = startRotX + (spinTurnsX + targetRotX - startRotX) * easeOut;
+                targetRotation.y = startRotY + (spinTurnsY + targetRotY - startRotY) * easeOut;
+
+                // Play tick audio during spin
+                if (now - lastTick > 120 * (1 + easeOut * 2) && progress < 0.9) {
+                    playSpinTick();
+                    lastTick = now;
+                }
+
+                if (progress < 1) {
+                    requestAnimationFrame(animateSpin);
+                } else {
+                    isSpinning = false;
+                    spinBtn.disabled = false;
+                    spinBtn.innerText = "🎲 SPIN THE GLOBE";
+
+                    targetRotation.x = targetRotX;
+                    targetRotation.y = targetRotY;
+
+                    selectCountryByIndex(nextIdx);
+                }
+            }
+
+            animateSpin();
+        }
+
+        function highlightCountryPin(idx) {
+            resetAllPins();
+            const pin = countryPins[idx];
+            if (!pin) return;
+
+            // Animate beam beam and pin height
+            pin.userData.beam.material.opacity = 0.6;
+            
+            // World coordinate vector for confetti
+            const worldPos = new THREE.Vector3();
+            pin.getWorldPosition(worldPos);
+            triggerConfettiBurst(worldPos, pin.userData.country.colors[0]);
+        }
+
+        function resetAllPins() {
+            countryPins.forEach(pin => {
+                pin.userData.beam.material.opacity = 0;
+            });
+        }
+
+        function showCountryCard(country) {
+            const card = document.getElementById('country-card');
+            document.getElementById('card-flag-img').src = country.flagDataUrl;
+            document.getElementById('card-country-name').innerText = country.name;
+            document.getElementById('card-phonetic').innerText = country.phonetic;
+            document.getElementById('card-fact').innerText = country.fact;
+
+            // Render Color Swatches
+            const swatchBox = document.getElementById('card-color-swatches');
+            swatchBox.innerHTML = '';
+            country.colors.forEach(col => {
+                const dot = document.createElement('div');
+                dot.className = 'w-4 h-4 rounded-full border border-white/40 shadow-sm';
+                dot.style.backgroundColor = col;
+                swatchBox.appendChild(dot);
+            });
+
+            card.classList.add('active');
+        }
+
+        function setupEventListeners() {
+            window.addEventListener('resize', onWindowResize);
+
+            const canvas = renderer.domElement;
+
+            canvas.addEventListener('mousedown', onPointerDown);
+            canvas.addEventListener('mousemove', onPointerMove);
+            canvas.addEventListener('mouseup', onPointerUp);
+            canvas.addEventListener('mouseleave', onPointerUp);
+
+            canvas.addEventListener('touchstart', onPointerDown, { passive: false });
+            canvas.addEventListener('touchmove', onPointerMove, { passive: false });
+            canvas.addEventListener('touchend', onPointerUp);
+
+            document.getElementById('spin-btn').onclick = spinGlobe;
+
+            document.getElementById('speak-btn').onclick = () => {
+                if (selectedCountryIndex >= 0) {
+                    speakCountryName(countriesData[selectedCountryIndex].name);
+                }
+            };
+
+            document.getElementById('sound-toggle-btn').onclick = (e) => {
+                isSoundEnabled = !isSoundEnabled;
+                e.currentTarget.innerText = isSoundEnabled ? '🔊' : '🔇';
+            };
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function onPointerDown(e) {
+            if (isSpinning) return;
+            isDragging = true;
+            const x = e.touches ? e.touches[0].clientX : e.clientX;
+            const y = e.touches ? e.touches[0].clientY : e.clientY;
+            previousMousePosition = { x, y };
+        }
+
+        function onPointerMove(e) {
+            if (!isDragging || isSpinning) return;
+            if (e.touches) e.preventDefault();
+
+            const x = e.touches ? e.touches[0].clientX : e.clientX;
+            const y = e.touches ? e.touches[0].clientY : e.clientY;
+
+            const deltaX = x - previousMousePosition.x;
+            const deltaY = y - previousMousePosition.y;
+
+            targetRotation.y += deltaX * 0.005;
+            targetRotation.x += deltaY * 0.005;
+
+            // Clamp vertical pitch to prevent inversion
+            targetRotation.x = Math.max(-Math.PI / 2 + 0.1, Math.min(Math.PI / 2 - 0.1, targetRotation.x));
+
+            previousMousePosition = { x, y };
+        }
+
+        function onPointerUp() {
+            isDragging = false;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Smooth rotational interpolation
+            currentRotation.x += (targetRotation.x - currentRotation.x) * 0.1;
+            currentRotation.y += (targetRotation.y - currentRotation.y) * 0.1;
+
+            if (globe) {
+                globe.rotation.x = currentRotation.x;
+                globe.rotation.y = currentRotation.y;
+
+                if (!isDragging && !isSpinning) {
+                    targetRotation.y += autoSpinSpeed;
+                }
+            }
+
+            // Animate flag pins waving effect
+            const time = Date.now() * 0.003;
+            countryPins.forEach((pin, i) => {
+                const flag = pin.userData.flag;
+                flag.rotation.y = Math.sin(time + i) * 0.15;
+            });
+
+            // Update Particle Confetti System
+            if (particleSystem && particleSystem.userData.active) {
+                const pos = particleSystem.geometry.attributes.position.array;
+                const vels = particleSystem.userData.velocities;
+                
+                for (let i = 0; i < vels.length; i++) {
+                    pos[i * 3] += vels[i].x;
+                    pos[i * 3 + 1] += vels[i].y;
+                    pos[i * 3 + 2] += vels[i].z;
+                }
+                
+                particleSystem.geometry.attributes.position.needsUpdate = true;
+                particleSystem.userData.life -= 0.02;
+                particleSystem.material.opacity = particleSystem.userData.life;
+
+                if (particleSystem.userData.life <= 0) {
+                    particleSystem.userData.active = false;
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // Initialize on Window Load
+        window.onload = () => {
+            initThreeScene();
+        };
+    </script>
+</body>
+</html>
